@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Nezha Monitor</string>
+    <string name="widget_description">Nezha server monitor widget</string>
+    <string name="widget_loading">Loading monitor data...</string>
+</resources>
