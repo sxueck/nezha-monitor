@@ -17,7 +17,7 @@ import com.sxueck.monitor.ui.theme.NezhaColors
 @Composable
 fun LoadingDots(
     modifier: Modifier = Modifier,
-    color: Color = NezhaColors.AccentPrimary
+    color: Color = NezhaColors.accentPrimary()
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "loading")
     
@@ -65,14 +65,14 @@ fun LoadingDots(
 @Composable
 fun PulseIndicator(
     modifier: Modifier = Modifier,
-    color: Color = NezhaColors.Success,
+    color: Color = NezhaColors.success(),
     isActive: Boolean = true
 ) {
     if (!isActive) {
         Box(
             modifier = modifier
                 .size(12.dp)
-                .background(NezhaColors.TextMuted, CircleShape)
+                .background(NezhaColors.textMuted(), CircleShape)
         )
         return
     }
@@ -119,7 +119,7 @@ fun PulseIndicator(
 @Composable
 fun ShimmerEffect(
     modifier: Modifier = Modifier,
-    color: Color = NezhaColors.SurfaceVariant
+    color: Color = NezhaColors.surfaceVariant()
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
     val translateAnim by infiniteTransition.animateFloat(

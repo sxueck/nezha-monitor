@@ -25,9 +25,9 @@ fun GlassCard(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = NezhaColors.Surface.copy(alpha = 0.8f)
+            containerColor = NezhaColors.surface().copy(alpha = 0.8f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -41,8 +41,8 @@ fun GradientCard(
     modifier: Modifier = Modifier,
     gradient: Brush = Brush.linearGradient(
         colors = listOf(
-            NezhaColors.Surface,
-            NezhaColors.SurfaceVariant
+            NezhaColors.surface(),
+            NezhaColors.surfaceVariant()
         )
     ),
     content: @Composable ColumnScope.() -> Unit
@@ -62,7 +62,7 @@ fun MetricCard(
     title: String,
     value: String,
     subtitle: String? = null,
-    indicatorColor: Color = NezhaColors.AccentPrimary,
+    indicatorColor: Color = NezhaColors.accentPrimary(),
     modifier: Modifier = Modifier
 ) {
     GlassCard(modifier = modifier.fillMaxWidth()) {
@@ -74,13 +74,13 @@ fun MetricCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.labelMedium,
-                    color = NezhaColors.TextSecondary
+                    color = NezhaColors.textSecondary()
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = value,
                     style = MaterialTheme.typography.headlineMedium,
-                    color = NezhaColors.TextPrimary,
+                    color = NezhaColors.textPrimary(),
                     fontWeight = FontWeight.Bold
                 )
                 if (subtitle != null) {
@@ -88,7 +88,7 @@ fun MetricCard(
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.labelSmall,
-                        color = NezhaColors.TextMuted
+                        color = NezhaColors.textMuted()
                     )
                 }
             }
@@ -124,12 +124,12 @@ fun ExpandableCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = NezhaColors.TextPrimary
+                    color = NezhaColors.textPrimary()
                 )
                 Text(
                     text = if (expanded) "▲" else "▼",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = NezhaColors.TextSecondary
+                    color = NezhaColors.textSecondary()
                 )
             }
             if (expanded) {

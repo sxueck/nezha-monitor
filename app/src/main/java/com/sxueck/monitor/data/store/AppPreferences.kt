@@ -31,6 +31,7 @@ class AppPreferences(val context: Context) {
     private val keyUsername = stringPreferencesKey("username")
     private val keyPassword = stringPreferencesKey("password")
     private val keyTokenExpireAt = longPreferencesKey("token_expire_at")
+    private val keyThemeMode = intPreferencesKey("theme_mode")
 
     val configFlow: Flow<MonitorConfig> = context.dataStore.data.map { pref ->
         MonitorConfig(
@@ -152,4 +153,18 @@ class AppPreferences(val context: Context) {
     suspend fun getLastSuccessAt(): Long = context.dataStore.data
         .map { it[keyLastSuccessAt] ?: 0L }
         .first()
+
+    // Theme mode: 0 = System, 1 = Light, 2 = Dark
+    val themeModeFlow: Flow<Int> = context.dataStore.data
+        .map { it[keyThemeMode] ?: 0 }
+
+    suspend fun getThemeMode(): Int = context.dataStore.data
+        .map { it[keyThemeMode] ?: 0 }
+        .first()
+
+    suspend fun saveThemeMode(mode: Int) {
+        context.dataStore.edit { pref ->
+            pref[keyThemeMode] = mode
+        }
+    }
 }

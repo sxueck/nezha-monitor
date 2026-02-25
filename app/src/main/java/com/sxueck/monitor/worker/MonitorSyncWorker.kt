@@ -10,6 +10,7 @@ import com.sxueck.monitor.data.network.NezhaNetwork
 import com.sxueck.monitor.data.network.TokenManager
 import com.sxueck.monitor.data.repo.NezhaRepository
 import com.sxueck.monitor.data.store.AppPreferences
+import com.sxueck.monitor.data.traffic.TrafficPeriodHelper
 import com.sxueck.monitor.data.traffic.TrafficSnapshot
 import com.sxueck.monitor.data.traffic.TrafficStore
 import com.sxueck.monitor.notify.MonitorNotifier
@@ -49,9 +50,18 @@ class MonitorSyncWorker(
                     nowEpochSec = currentEpochSec()
                 )
 
-                preferences.saveSnapshot(payload.snapshot)
+                // Calculate daily traffic
+                val dailyTraffic = calculateDailyTraffic()
+                
+                // Create updated snapshot with daily traffic
+                val updatedSnapshot = payload.snapshot.copy(
+                    dailyNetIn = dailyTraffic.first,
+                    dailyNetOut = dailyTraffic.second
+                )
+                
+                preferences.saveSnapshot(updatedSnapshot)
                 preferences.saveCarouselIndex(payload.nextCarouselIndex)
-                preferences.saveLastSuccessAt(payload.snapshot.updatedAtEpochSec)
+                preferences.saveLastSuccessAt(updatedSnapshot.updatedAtEpochSec)
                 handleOfflineNotifications(payload.servers, preferences, notifier)
                 
                 // Save traffic snapshots
@@ -129,4 +139,27 @@ class MonitorSyncWorker(
     }
 
     private fun currentEpochSec(): Long = System.currentTimeMillis() / 1000
+    
+    private suspend fun calculateDailyTraffic(): Pair<String, String> {
+        return runCatching {
+            val trafficStore = TrafficStore(applicationContext)
+            val (startTime, endTime) = TrafficPeriodHelper.getLastDayRange()
+            val stats = trafficStore.calculateAggregatedStats("day", startTime, endTime)
+            
+            val formatBytes: (Long) -> String = { bytes ->
+                when {
+                    bytes >= 1024 * 1024 * 1024 * 1024L -> "%.1fTB".format(bytes / (1024.0 * 1024 * 1024 * 1024))
+                    bytes >= 1024 * 1024 * 1024L -> "%.1fGB".format(bytes / (1024.0 * 1024 * 1024))
+                    bytes >= 1024 * 1024L -> "%.1fMB".format(bytes / (1024.0 * 1024))
+                    bytes >= 1024L -> "%.1fKB".format(bytes / 1024.0)
+                    else -> "${bytes}B"
+                }
+            }
+            
+            Pair(formatBytes(stats.totalNetIn), formatBytes(stats.totalNetOut))
+        }.getOrElse { 
+            android.util.Log.e("MonitorSyncWorker", "Error calculating daily traffic", it)
+            Pair("--", "--") 
+        }
+    }
 }

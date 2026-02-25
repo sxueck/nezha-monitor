@@ -19,6 +19,10 @@ import androidx.glance.unit.ColorProvider
 import com.sxueck.monitor.data.model.WidgetSnapshot
 import com.sxueck.monitor.data.store.AppPreferences
 
+/**
+ * 1x1 简洁小组件
+ * 仅显示在线数/总数 (X/Y)
+ */
 class NezhaWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val snapshot = AppPreferences(context).getSnapshotOnce()
@@ -31,194 +35,117 @@ class NezhaWidget : GlanceAppWidget() {
 @androidx.compose.runtime.Composable
 private fun WidgetContent(snapshot: WidgetSnapshot) {
     val bgDeep = ColorProvider(Color(0xFF0F172A))
-    val surface = ColorProvider(Color(0xFF1E293B))
-    val surfaceHighlight = ColorProvider(Color(0xFF334155))
     val textPrimary = ColorProvider(Color(0xFFF8FAFC))
     val textSecondary = ColorProvider(Color(0xFF94A3B8))
     val textMuted = ColorProvider(Color(0xFF64748B))
     
     val accentOnline = ColorProvider(Color(0xFF22D3EE))
-    val accentTrafficIn = ColorProvider(Color(0xFF34D399))
-    val accentTrafficOut = ColorProvider(Color(0xFFA78BFA))
     val accentOffline = ColorProvider(Color(0xFFEF4444))
+    
+    // 根据状态选择边框颜色
+    val borderColor = when {
+        snapshot.tagOffline > 0 -> accentOffline
+        snapshot.tagOnline > 0 -> accentOnline
+        else -> textSecondary
+    }
 
     Box(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(bgDeep)
-            .cornerRadius(20.dp)
-            .padding(16.dp)
+            .cornerRadius(16.dp)
+            .padding(4.dp),
+        contentAlignment = androidx.glance.layout.Alignment.Center
     ) {
-        Column(modifier = GlanceModifier.fillMaxSize()) {
-            // Header
-            Row(
-                modifier = GlanceModifier.fillMaxWidth(),
-                verticalAlignment = androidx.glance.layout.Alignment.Vertical.CenterVertically
+        if (snapshot.servers.isEmpty()) {
+            // 无数据时显示 "--"
+            Text(
+                text = "--",
+                style = TextStyle(
+                    color = textSecondary,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            )
+        } else {
+            Column(
+                modifier = GlanceModifier.fillMaxSize(),
+                verticalAlignment = androidx.glance.layout.Alignment.Vertical.CenterVertically,
+                horizontalAlignment = androidx.glance.layout.Alignment.Horizontal.CenterHorizontally
             ) {
-                val statusColor = when (snapshot.status) {
-                    "ok" -> accentOnline
-                    "error" -> accentOffline
-                    else -> textMuted
-                }
-                Box(
-                    modifier = GlanceModifier
-                        .size(8.dp)
-                        .background(statusColor)
-                        .cornerRadius(4.dp),
-                    contentAlignment = androidx.glance.layout.Alignment.Center
-                ) {}
-                Spacer(GlanceModifier.width(8.dp))
-                Text(
-                    text = "NEZHA",
-                    style = TextStyle(
-                        color = textPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                )
-                Spacer(GlanceModifier.defaultWeight())
-                Text(
-                    text = snapshot.lastActiveText.replace("Updated ", "").replace("Last active ", ""),
-                    style = TextStyle(
-                        color = textMuted,
-                        fontSize = 10.sp
-                    )
-                )
-            }
-
-            if (snapshot.servers.isEmpty()) {
-                Box(
-                    modifier = GlanceModifier
-                        .fillMaxWidth()
-                        .defaultWeight()
-                        .background(surface)
-                        .cornerRadius(12.dp),
-                    contentAlignment = androidx.glance.layout.Alignment.Center
-                ) {
-                    Text(
-                        text = snapshot.message.takeIf { it.isNotBlank() } ?: "Waiting for data...",
-                        style = TextStyle(
-                            color = textSecondary,
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    )
-                }
-            } else {
-                Spacer(GlanceModifier.height(16.dp))
-                
-                // 核心指标区：在线数量 + 流量（放到右侧）
+                // 主内容：显示 X/Y 格式
                 Row(
-                    modifier = GlanceModifier.fillMaxWidth(),
-                    verticalAlignment = androidx.glance.layout.Alignment.Vertical.Bottom
+                    verticalAlignment = androidx.glance.layout.Alignment.Vertical.CenterVertically,
+                    horizontalAlignment = androidx.glance.layout.Alignment.Horizontal.CenterHorizontally
                 ) {
-                    // 在线数量
+                    // 在线数
                     Text(
-                        text = "${snapshot.tagOnline}",
+                        text = snapshot.tagOnline.toString(),
                         style = TextStyle(
                             color = accentOnline,
-                            fontSize = 42.sp,
+                            fontSize = 28.sp,
                             fontWeight = FontWeight.Bold
                         )
                     )
-                    Spacer(GlanceModifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = "/${snapshot.tagTotal}",
-                            style = TextStyle(
-                                color = textSecondary,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Medium
-                            )
+                    
+                    // 分隔符
+                    Text(
+                        text = "/",
+                        style = TextStyle(
+                            color = textSecondary,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Normal
                         )
+                    )
+                    
+                    // 总数
+                    Text(
+                        text = snapshot.tagTotal.toString(),
+                        style = TextStyle(
+                            color = textPrimary,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                }
+                
+                // 底部：每日流量统计
+                Row(
+                    modifier = GlanceModifier.padding(top = 4.dp),
+                    verticalAlignment = androidx.glance.layout.Alignment.Vertical.CenterVertically,
+                    horizontalAlignment = androidx.glance.layout.Alignment.Horizontal.CenterHorizontally
+                ) {
+                    // 下载流量
+                    Text(
+                        text = "${snapshot.dailyNetIn}",
+                        style = TextStyle(
+                            color = textMuted,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Normal
+                        )
+                    )
+                    
+                    Box(modifier = GlanceModifier.padding(horizontal = 8.dp)) {
                         Text(
-                            text = "ONLINE",
+                            text = "|",
                             style = TextStyle(
                                 color = textMuted,
-                                fontSize = 9.sp
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Normal
                             )
                         )
                     }
                     
-                    Spacer(GlanceModifier.defaultWeight())
-                    
-                    // 流量统计（使用瘦箭头，放到右侧）
-                    Column(horizontalAlignment = androidx.glance.layout.Alignment.Horizontal.End) {
-                        // 下行
-                        Row(verticalAlignment = androidx.glance.layout.Alignment.Vertical.CenterVertically) {
-                            Text(
-                                text = "<- ",
-                                style = TextStyle(
-                                    color = accentTrafficIn,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            )
-                            Text(
-                                text = snapshot.totalNetIn,
-                                style = TextStyle(
-                                    color = textPrimary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            )
-                        }
-                        Spacer(GlanceModifier.height(2.dp))
-                        // 上行
-                        Row(verticalAlignment = androidx.glance.layout.Alignment.Vertical.CenterVertically) {
-                            Text(
-                                text = "-> ",
-                                style = TextStyle(
-                                    color = accentTrafficOut,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            )
-                            Text(
-                                text = snapshot.totalNetOut,
-                                style = TextStyle(
-                                    color = textPrimary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            )
-                        }
-                    }
-                }
-
-                // 如果有离线设备，显示警告
-                if (snapshot.tagOffline > 0) {
-                    Spacer(GlanceModifier.height(12.dp))
-                    Box(
-                        modifier = GlanceModifier
-                            .fillMaxWidth()
-                            .background(ColorProvider(Color(0xFFEF4444).copy(alpha = 0.1f)))
-                            .cornerRadius(12.dp)
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        Row(
-                            modifier = GlanceModifier.fillMaxWidth(),
-                            verticalAlignment = androidx.glance.layout.Alignment.Vertical.CenterVertically
-                        ) {
-                            Text(
-                                text = "!",
-                                style = TextStyle(
-                                    color = accentOffline,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            )
-                            Spacer(GlanceModifier.width(8.dp))
-                            Text(
-                                text = "${snapshot.tagOffline} servers offline",
-                                style = TextStyle(
-                                    color = accentOffline,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            )
-                        }
-                    }
+                    // 上传流量
+                    Text(
+                        text = "${snapshot.dailyNetOut}",
+                        style = TextStyle(
+                            color = textMuted,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Normal
+                        )
+                    )
                 }
             }
         }

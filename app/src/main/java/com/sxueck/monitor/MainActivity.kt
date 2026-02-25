@@ -24,6 +24,9 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -41,41 +44,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.sxueck.monitor.data.model.LoginRequest
 import com.sxueck.monitor.data.model.MonitorConfig
 import com.sxueck.monitor.data.model.ServerDisplayData
 import com.sxueck.monitor.data.model.WidgetSnapshot
-import com.sxueck.monitor.data.network.NezhaNetwork
 import com.sxueck.monitor.data.store.AppPreferences
+import com.sxueck.monitor.ui.settings.SettingsActivity
 import com.sxueck.monitor.ui.stats.TrafficStatsActivity
 import com.sxueck.monitor.ui.theme.NezhaMonitorTheme
+import com.sxueck.monitor.ui.theme.ThemeMode
 import com.sxueck.monitor.worker.MonitorWorkScheduler
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-private data class TestStatus(
-    val success: Boolean,
-    val message: String
-)
-
-private fun parseExpireTime(expire: String): Long {
-    return when {
-        expire.isBlank() -> 0L
-        expire.toLongOrNull() != null -> {
-            // Unix timestamp (seconds)
-            val ts = expire.toLong()
-            if (ts > 1_000_000_000_000L) ts / 1000 else ts
-        }
-        else -> {
-            // Try parsing as ISO 8601 date
-            try {
-                java.time.Instant.parse(expire).epochSecond
-            } catch (_: Exception) {
-                0L
-            }
-        }
-    }
-}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,7 +63,7 @@ class MainActivity : ComponentActivity() {
         val preferences = AppPreferences(applicationContext)
 
         setContent {
-            NezhaMonitorTheme {
+            NezhaMonitorTheme(preferences = preferences) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -107,14 +86,21 @@ private fun MainScreen(
     preferences: AppPreferences,
     onNavigateToTrafficStats: () -> Unit
 ) {
-    val config by preferences.configFlow.collectAsStateWithLifecycle(initialValue = MonitorConfig())
+    val context = androidx.compose.ui.platform.LocalContext.current
     val snapshot by preferences.snapshotFlow.collectAsStateWithLifecycle(initialValue = WidgetSnapshot())
     val scope = rememberCoroutineScope()
     
+    // 使用remember记住主题模式状态，确保切换立即生效
+    var currentThemeMode by remember { mutableStateOf(ThemeMode.SYSTEM) }
+    
+    // 从preferences读取主题模式
+    LaunchedEffect(Unit) {
+        preferences.themeModeFlow.collect { modeValue ->
+            currentThemeMode = ThemeMode.fromInt(modeValue)
+        }
+    }
+    
     var dragOffsetX by remember { mutableStateOf(0f) }
-
-    // 默认不显示配置卡片，只有点击设置按钮时才显示
-    var showConfig by rememberSaveable { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     var showSuccess by remember { mutableStateOf(false) }
     var selectedServerId by remember { mutableStateOf<Long?>(null) }
@@ -144,6 +130,32 @@ private fun MainScreen(
                     titleContentColor = MaterialTheme.colorScheme.onBackground
                 ),
                 actions = {
+                    // 主题切换按钮 - 使用本地状态，立即响应
+                    IconButton(
+                        onClick = {
+                            val nextMode = when (currentThemeMode) {
+                                ThemeMode.SYSTEM -> ThemeMode.LIGHT
+                                ThemeMode.LIGHT -> ThemeMode.DARK
+                                ThemeMode.DARK -> ThemeMode.SYSTEM
+                            }
+                            currentThemeMode = nextMode
+                            scope.launch {
+                                preferences.saveThemeMode(nextMode.value)
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = when (currentThemeMode) {
+                                ThemeMode.SYSTEM -> Icons.Outlined.DarkMode
+                                ThemeMode.LIGHT -> Icons.Default.LightMode
+                                ThemeMode.DARK -> Icons.Default.DarkMode
+                            },
+                            contentDescription = "Toggle Theme",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    // 刷新按钮
                     IconButton(
                         onClick = {
                             scope.launch {
@@ -164,7 +176,11 @@ private fun MainScreen(
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
-                    IconButton(onClick = { showConfig = !showConfig }) {
+
+                    // 设置按钮 - 跳转到设置页面
+                    IconButton(onClick = { 
+                        context.startActivity(Intent(context, SettingsActivity::class.java))
+                    }) {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Settings",
@@ -183,7 +199,6 @@ private fun MainScreen(
                     detectHorizontalDragGestures(
                         onDragEnd = {
                             if (dragOffsetX < -200f) {
-                                // 左滑超过200px，进入流量统计页面
                                 onNavigateToTrafficStats()
                             }
                             dragOffsetX = 0f
@@ -200,20 +215,8 @@ private fun MainScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                AnimatedVisibility(
-                    visible = showConfig,
-                    enter = fadeIn() + slideInVertically(),
-                    exit = fadeOut() + slideOutVertically()
-                ) {
-                    ConfigCard(
-                        config = config,
-                        preferences = preferences,
-                        onDismiss = { showConfig = false }
-                    )
-                }
-
-                // Overall Stats Card
-                OverallStatsCard(snapshot = snapshot, isRefreshing = isRefreshing)
+                // Overall Stats Card - 使用新的平面设计
+                OverallStatsCardFlat(snapshot = snapshot, isRefreshing = isRefreshing)
 
                 // Server List
                 Text(
@@ -263,37 +266,38 @@ private fun MainScreen(
 }
 
 @Composable
-private fun OverallStatsCard(snapshot: WidgetSnapshot, isRefreshing: Boolean) {
+private fun OverallStatsCardFlat(snapshot: WidgetSnapshot, isRefreshing: Boolean) {
     val scale by animateFloatAsState(
         targetValue = if (isRefreshing) 0.98f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "scale"
     )
 
-    Card(
+    // 无边框的平面设计 - 使用Surface代替Card，移除所有边框和阴影
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .scale(scale),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    brush = Brush.linearGradient(
+                    brush = Brush.verticalGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                            MaterialTheme.colorScheme.surface
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
                         )
                     )
                 )
-                .padding(20.dp)
+                .padding(horizontal = 20.dp, vertical = 20.dp)
         ) {
             Column {
+                // Header with status
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -320,13 +324,14 @@ private fun OverallStatsCard(snapshot: WidgetSnapshot, isRefreshing: Boolean) {
                         else -> MaterialTheme.colorScheme.outline
                     }
                     
+                    // 平面状态标签 - 无描边
                     Surface(
-                        color = statusColor.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(8.dp)
+                        color = statusColor.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(20.dp)
                     ) {
                         Text(
                             text = snapshot.status.uppercase(),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.SemiBold
                             ),
@@ -335,33 +340,48 @@ private fun OverallStatsCard(snapshot: WidgetSnapshot, isRefreshing: Boolean) {
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
+                // 平面统计卡片 - 无边框设计
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    StatItem(
+                    // Total 卡片 - 平面设计
+                    FlatStatCard(
                         label = "Total",
                         value = snapshot.tagTotal.toString(),
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f)
                     )
-                    StatItem(
+                    
+                    // Online 卡片 - 平面设计
+                    FlatStatCard(
                         label = "Online",
                         value = snapshot.tagOnline.toString(),
-                        color = Color(0xFF4ADE80)
+                        color = Color(0xFF22C55E),
+                        modifier = Modifier.weight(1f)
                     )
-                    StatItem(
+                    
+                    // Offline 卡片 - 平面设计
+                    FlatStatCard(
                         label = "Offline",
                         value = snapshot.tagOffline.toString(),
-                        color = MaterialTheme.colorScheme.error
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.weight(1f)
                     )
                 }
 
                 if (snapshot.status == "ok") {
+                    Spacer(modifier = Modifier.height(20.dp))
+                    // 细线分隔
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                    Spacer(modifier = Modifier.height(12.dp))
                     
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -372,6 +392,44 @@ private fun OverallStatsCard(snapshot: WidgetSnapshot, isRefreshing: Boolean) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun FlatStatCard(
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = color.copy(alpha = 0.08f),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp, horizontal = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.Bold
+                ),
+                color = color
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -634,286 +692,6 @@ private fun StatItem(label: String, value: String, color: Color) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-    }
-}
-
-@Composable
-private fun ConfigCard(
-    config: MonitorConfig,
-    preferences: AppPreferences,
-    onDismiss: () -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    var baseUrl by rememberSaveable(config.baseUrl) { mutableStateOf(config.baseUrl) }
-    var username by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
-    var tagsInput by rememberSaveable(config.tags.joinToString(",")) { mutableStateOf(config.tags.joinToString(",")) }
-    var isLoading by remember { mutableStateOf(false) }
-    var isTesting by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var testStatus by remember { mutableStateOf<TestStatus?>(null) }
-    var apiToken by rememberSaveable(config.apiToken) { mutableStateOf(config.apiToken) }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "Configuration",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold
-                ),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            OutlinedTextField(
-                value = baseUrl,
-                onValueChange = {
-                    baseUrl = it
-                    apiToken = ""
-                    testStatus = null
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Panel URL") },
-                placeholder = { Text("https://nezha.example.com") },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                )
-            )
-
-            OutlinedTextField(
-                value = username,
-                onValueChange = {
-                    username = it
-                    apiToken = ""
-                    testStatus = null
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Username") },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            OutlinedTextField(
-                value = password,
-                onValueChange = {
-                    password = it
-                    apiToken = ""
-                    testStatus = null
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Password") },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            OutlinedTextField(
-                value = tagsInput,
-                onValueChange = { tagsInput = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Tags (comma separated)") },
-                placeholder = { Text("prod, sg, hk") },
-                minLines = 2,
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            errorMessage?.let {
-                Text(
-                    text = it,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-
-            testStatus?.let { status ->
-                Surface(
-                    color = if (status.success) {
-                        Color(0xFF4ADE80).copy(alpha = 0.15f)
-                    } else {
-                        MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
-                    },
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (status.success) Icons.Default.CheckCircle else Icons.Default.Close,
-                            contentDescription = null,
-                            tint = if (status.success) Color(0xFF4ADE80) else MaterialTheme.colorScheme.error
-                        )
-                        Text(
-                            text = status.message,
-                            color = if (status.success) Color(0xFF22C55E) else MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-            }
-
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            isTesting = true
-                            errorMessage = null
-                            testStatus = null
-                            try {
-                                if (baseUrl.isBlank()) {
-                                    errorMessage = "Please enter panel URL"
-                                    return@launch
-                                }
-                                if (username.isBlank() || password.isBlank()) {
-                                    errorMessage = "Please enter username and password"
-                                    return@launch
-                                }
-
-                                val normalizedUrl = if (baseUrl.endsWith('/')) baseUrl else "$baseUrl/"
-                                val api = NezhaNetwork.createApi(normalizedUrl, "")
-                                
-                                val response = api.login(LoginRequest(username, password))
-                                
-                                if (response.isSuccessful && response.body()?.success == true) {
-                                    val loginData = response.body()?.data
-                                    val token = loginData?.token
-                                    if (!token.isNullOrBlank()) {
-                                        apiToken = token
-                                        // Save credentials for auto-relogin
-                                        preferences.saveCredentials(username, password)
-                                        // Parse and save token expiry
-                                        val expireAt = parseExpireTime(loginData.expire)
-                                        preferences.saveTokenWithExpiry(token, expireAt)
-                                        testStatus = TestStatus(
-                                            success = true,
-                                            message = "Connection successful! Token received."
-                                        )
-                                    } else {
-                                        testStatus = TestStatus(
-                                            success = false,
-                                            message = "Login succeeded but no token received"
-                                        )
-                                    }
-                                } else {
-                                    val errorMsg = response.body()?.error ?: "HTTP ${response.code()}"
-                                    testStatus = TestStatus(
-                                        success = false,
-                                        message = "Connection failed: $errorMsg"
-                                    )
-                                }
-                            } catch (e: Exception) {
-                                testStatus = TestStatus(
-                                    success = false,
-                                    message = "Connection error: ${e.message ?: "Unknown error"}"
-                                )
-                            } finally {
-                                isTesting = false
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    enabled = !isTesting && !isLoading,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondary
-                    )
-                ) {
-                    if (isTesting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text("Test Connection")
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Cancel")
-                    }
-
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                isLoading = true
-                                errorMessage = null
-                                try {
-                                    val tags = tagsInput.split(",")
-                                        .map { it.trim() }
-                                        .filter { it.isNotEmpty() }
-
-                                    if (baseUrl.isBlank()) {
-                                        errorMessage = "Please enter panel URL"
-                                        return@launch
-                                    }
-
-                                    if (apiToken.isBlank()) {
-                                        errorMessage = "Please test connection first to obtain token"
-                                        return@launch
-                                    }
-
-                                    preferences.updateConfig(
-                                        baseUrl = baseUrl,
-                                        apiToken = apiToken,
-                                        tags = tags
-                                    )
-                                    // Ensure credentials are saved (in case user modified them after test)
-                                    if (username.isNotBlank() && password.isNotBlank()) {
-                                        preferences.saveCredentials(username, password)
-                                    }
-
-                                    MonitorWorkScheduler.scheduleNow(preferences.context)
-                                    onDismiss()
-                                } catch (e: Exception) {
-                                    errorMessage = e.message ?: "Unknown error"
-                                } finally {
-                                    isLoading = false
-                                }
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        enabled = !isLoading && apiToken.isNotBlank()
-                    ) {
-                        if (isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Text("Save")
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

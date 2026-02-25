@@ -26,11 +26,12 @@ data class WidgetSnapshot(
     val trendText: String = "Trend --",
     val lastActiveText: String = "Last active --",
     val servers: List<ServerDisplayData> = emptyList(),
-    // 新增：总体统计信息
     val highestLoadServer: String = "-",
     val highestLoadValue: String = "--",
     val totalNetIn: String = "--",
-    val totalNetOut: String = "--"
+    val totalNetOut: String = "--",
+    val dailyNetIn: String = "--",
+    val dailyNetOut: String = "--"
 )
 
 @Serializable
@@ -58,7 +59,6 @@ data class ServerDisplayData(
     val virtualization: String = "",
     val lastActiveText: String = "",
     val hasHostData: Boolean = false,
-    // 新增：系统版本和运行时长
     val platformVersion: String = "",
     val uptime: String = ""
 )

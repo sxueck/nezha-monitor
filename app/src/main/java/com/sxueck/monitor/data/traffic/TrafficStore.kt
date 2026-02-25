@@ -141,10 +141,11 @@ class TrafficStore(private val context: Context) {
                     
                     if (history != null) {
                         history.snapshots.removeAll { it.timestamp < cutoffTime }
+                        val stringKey = stringPreferencesKey(key.name)
                         if (history.snapshots.isEmpty()) {
-                            prefs.remove(key)
+                            prefs.remove(stringKey)
                         } else {
-                            prefs[key] = json.encodeToString(history)
+                            prefs[stringKey] = json.encodeToString(history)
                         }
                     }
                 }

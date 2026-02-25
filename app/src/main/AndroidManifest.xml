@@ -26,6 +26,10 @@
             android:name=".ui.stats.TrafficStatsActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.settings.SettingsActivity"
+            android:exported="false" />
+
         <receiver
             android:name=".widget.NezhaWidgetReceiver"
             android:exported="true">
